@@ -6,7 +6,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_absolute_percentage_error
 import yfinance as yf
 
-# Sidebar content
+# Sidebar untuk memilih sumber data
 with st.sidebar:
     st.image("image.png")
     st.title("Prediksi Harga Saham")
@@ -15,16 +15,13 @@ with st.sidebar:
     data_source = st.radio("Pilih sumber data:", ["Upload File CSV", "Ambil Data dari Yahoo Finance"])
     
     if data_source == "Upload File CSV":
-        # Upload file jika memilih opsi ini
-        file = st.file_uploader("Upload your input csv file", type=["csv"])
+        file = st.file_uploader("Upload file CSV Anda", type=["csv"])
         if file:
             df = pd.read_csv(file)
             df['Date'] = pd.to_datetime(df['Date'])
             df.set_index('Date', inplace=True)
-            # Menyimpan file CSV yang di-upload
             csv_data = df.to_csv().encode('utf-8')
     else:
-        # Ambil data dari Yahoo Finance jika memilih opsi ini
         ticker = st.text_input("Masukkan kode saham (misal: TLKM.JK, PTBA.JK, BBRI.JK): ").upper()
         start_date = st.date_input("Pilih tanggal mulai:")
         end_date = st.date_input("Pilih tanggal akhir:")
@@ -36,18 +33,16 @@ with st.sidebar:
             else:
                 df['Date'] = pd.to_datetime(df.index)
                 df.set_index('Date', inplace=True)
-                # Menyimpan data yang diambil dari Yahoo Finance sebagai CSV
                 csv_data = df.to_csv().encode('utf-8')
 
-    # Pilihan menu untuk analisis
     choice = st.radio("Daftar Menu", ["Data Detail", "Data Model", "Prediksi"])
     st.info("Aplikasi ini digunakan untuk memprediksi harga saham dengan time frame daily")
 
-# Pastikan dataframe ada sebelum melanjutkan ke menu lain
+# Jika data berhasil diambil atau diunggah
 if 'df' in locals() and not df.empty:
     train_df, test_df = train_test_split(df, test_size=0.2, shuffle=False)
     
-    # Data Detail Menu
+    # Menu "Data Detail" untuk melihat data yang digunakan
     if choice == "Data Detail":
         st.title("Data Detail")
         st.info("Data Head")
@@ -60,41 +55,40 @@ if 'df' in locals() and not df.empty:
         # Download data yang digunakan
         st.download_button(
             label="Download sebagai CSV",
-            data=csv_data,  # Gunakan data CSV yang disimpan
+            data=csv_data,
             file_name='stock_data.csv',
             mime='text/csv',
         )
 
-    # Data Model Menu
+    # Menu "Data Model" untuk melatih model dan melihat hasil perbandingan
     elif choice == "Data Model":
-        st.title("Triple Exponential Smoothing Model")
-        # Membangun model Triple Exponential Smoothing
-        model = ExponentialSmoothing(train_df['Close'], trend='add', seasonal='add', seasonal_periods=155).fit()
+        st.title("Model Prediksi Harga Saham Triple Exponential Smoothing (TES)")
 
-        # Generate predictions for the test set
-        date = len(test_df)  # Number of days to forecast based on the length of the test set
-        pred = model.forecast(date)
-        pred = pd.DataFrame(pred, columns=['Predicted Close'])
-        pred.index = test_df.index
-
-        combined = pd.concat([test_df['Close'], pred], axis=1)
-
-        st.info("Data Actual vs Prediction")
-
-        # Plot the chart
-        fig, ax = plt.subplots(figsize=(10, 6))
-        train_df['Close'].plot(style='--', color='gray', legend=True, label='Training Data', ax=ax)
-        test_df['Close'].plot(style='--', color='r', legend=True, label='Test Data', ax=ax)
-        pred['Predicted Close'].plot(color='b', legend=True, label='Prediction', ax=ax)
-        ax.set_xlabel("Date")
-        ax.set_ylabel("Close Price")
-        ax.set_title("Stock Price Prediction")
-        st.pyplot(fig)
-
-        # Display the table
-        st.dataframe(combined)
-
-        # Calculate and display MAPE
+        # Model Triple Exponential Smoothing (TES)
+        tes_model = ExponentialSmoothing(train_df['Close'], trend='add', seasonal='add', seasonal_periods=155).fit()
+        tes_pred = tes_model.forecast(len(test_df))
+        tes_pred = pd.DataFrame(tes_pred, columns=['Predicted Close TES'])
+        tes_pred.index = test_df.index
+        
+        # Display tabel perbandingan data aktual dan prediksi
+        st.subheader("Perbandingan Data Actual dan Prediksi TES")
+        
+        # Plot untuk Triple Exponential Smoothing
+        fig1, ax1 = plt.subplots(figsize=(10, 6))
+        train_df['Close'].plot(style='--', color='gray', legend=True, label='Training Data', ax=ax1)
+        test_df['Close'].plot(style='--', color='red', legend=True, label='Test Data', ax=ax1)
+        tes_pred['Predicted Close TES'].plot(color='blue', legend=True, label='TES Prediction', ax=ax1)
+        ax1.set_xlabel("Date")
+        ax1.set_ylabel("Close Price")
+        ax1.set_title("Prediksi Harga Saham - TES")
+        st.pyplot(fig1)
+        
+        # Gabungkan data actual dan prediksi TES ke dalam satu tabel
+        comparison_df = pd.concat([test_df['Close'], tes_pred], axis=1)
+        comparison_df.columns = ['Actual Close', 'Predicted Close TES']     
+        st.dataframe(comparison_df)
+        
+        # MAPE untuk TES
         st.info("Evaluasi Model Data Actual 80% (Train) dan Data Predict 20% (Test)")
         mape = [
             {"MAPE": "<10%", "Kategori": "Performa model prediksi akurat"},
@@ -102,47 +96,51 @@ if 'df' in locals() and not df.empty:
             {"MAPE": ">20%-50%", "Kategori": "Performa model prediksi layak"},
             {"MAPE": ">50%", "Kategori": "Performa model prediksi tidak akurat"}
         ]
-
         st.table(mape)
-        test_mape = mean_absolute_percentage_error(test_df['Close'], pred['Predicted Close'])
-        st.write('Mean Absolute Percentage Error (MAPE): {:.2f}%'.format(test_mape * 100))
+        tes_mape = mean_absolute_percentage_error(test_df['Close'], tes_pred['Predicted Close TES'])
+        st.write('TES Mean Absolute Percentage Error (MAPE): {:.2f}%'.format(tes_mape * 100))
 
-    # Prediksi Menu
+    # Menu "Prediksi" untuk melihat prediksi masa depan
     elif choice == "Prediksi":
         st.title("Prediksi Harga Saham")
+        
+        # Pilih jumlah hari untuk prediksi
         date = st.slider("Pilih jumlah hari prediksi", 1, 150, step=1)
 
-        # Forecast
         if st.button("Predict"):
-            # Train a Triple Exponential Smoothing model on the entire data
-            model = ExponentialSmoothing(df['Close'], trend='add', seasonal='add', seasonal_periods=155).fit()
+            # Prediksi dengan Triple Exponential Smoothing (TES)
+            tes_model = ExponentialSmoothing(df['Close'], trend='add', seasonal='add', seasonal_periods=155).fit()
+            tes_pred = tes_model.forecast(date)
+            tes_pred_df = pd.DataFrame(tes_pred, columns=['Predicted Close TES'])
+            tes_pred_df.index = pd.date_range(start=df.index[-1] + pd.Timedelta(days=1), periods=date, freq='D')
 
-            # Generate predictions
-            pred = model.forecast(date)
-            pred = pd.DataFrame(pred, columns=['Close'])
-            pred.index = pd.date_range(start=df.index[-1] + pd.Timedelta(days=1), periods=date, freq='D')
-
-            st.info("Hasil Prediksi")
-
-            # Plot the chart
-            fig, ax = plt.subplots()
-            df['Close'].plot(style='--', color='gray', legend=True, label='Known', ax=ax)
-            pred['Close'].plot(color='b', legend=True, label='Prediksi', ax=ax)
-            ax.set_xlabel("Date")
-            ax.set_ylabel("Close Price")
-            st.pyplot(fig)
-
-            # Display the table
-            st.dataframe(pred)
+            # Tampilan hasil prediksi TES
+            st.subheader("Hasil Prediksi Menggunakan Triple Exponential Smoothing (TES)")
+            fig1, ax1 = plt.subplots()
+            df['Close'].plot(style='--', color='gray', legend=True, label='Data Aktual', ax=ax1)
+            tes_pred_df['Predicted Close TES'].plot(color='blue', legend=True, label='Prediksi TES', ax=ax1)
+            ax1.set_xlabel("Date")
+            ax1.set_ylabel("Close Price")
+            st.pyplot(fig1)
             
-            # Evaluasi model berdasarkan jumlah data aktual dan jumlah periode data prediksi
+            st.dataframe(tes_pred_df)
+            
+            # Evaluasi model berdasarkan jumlah data aktual dan jumlah data prediksi
+            st.info("Evaluasi Model Berdasarkan Jumlah Data Aktual dan Jumlah Data Prediksi")
+            mape = [
+            {"MAPE": "<10%", "Kategori": "Performa model prediksi akurat"},
+            {"MAPE": ">10%-20%", "Kategori": "Performa model prediksi baik"},
+            {"MAPE": ">20%-50%", "Kategori": "Performa model prediksi layak"},
+            {"MAPE": ">50%", "Kategori": "Performa model prediksi tidak akurat"}
+            ]
+            st.table(mape)
             if date <= len(df):  # Jika periode prediksi dalam rentang data yang tersedia
-                st.info("Evaluasi Model")
                 df_test = df['Close'][-date:]  # Mengambil data aktual pada periode prediksi
-                pred_test = pred['Close'][:len(df_test)]  # Sesuaikan prediksi dengan periode yang sama
-                test_mape = mean_absolute_percentage_error(df_test, pred_test)
+                tes_pred_test = tes_pred[:len(df_test)]  # Sesuaikan prediksi dengan periode yang sama
+                test_mape = mean_absolute_percentage_error(df_test, tes_pred_test)
                 st.write('Mean Absolute Percentage Error (MAPE): {:.2f}%'.format(test_mape * 100))
             else:
                 st.warning("Tidak dapat menghitung MAPE karena prediksi melebihi data yang tersedia")
+            
 else:
     st.write("Silahkan upload file CSV atau masukkan kode saham dan tanggal untuk memulai analisis.")
